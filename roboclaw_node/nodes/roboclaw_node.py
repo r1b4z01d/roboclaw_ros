@@ -3,7 +3,7 @@ from math import pi, cos, sin
 
 import diagnostic_msgs
 import diagnostic_updater
-import roboclaw_driver.roboclaw_driver as roboclaw
+from roboclaw_driver.roboclaw_driver import Roboclaw
 import rospy
 import tf
 from geometry_msgs.msg import Quaternion, Twist
@@ -12,8 +12,7 @@ from nav_msgs.msg import Odometry
 __author__ = "bwbazemore@uga.edu (Brad Bazemore)"
 
 g_invert_motor_axes = False
-g_flip_left_right_motors = True # By default M1=right motor M2=left motor
-
+g_flip_left_right_motors = True  # By default M1=right motor M2=left motor
 
 # TODO need to find some better was of handling OSerror 11 or preventing it, any ideas?
 
@@ -151,9 +150,10 @@ class Node:
             rospy.logfatal("Address out of range")
             rospy.signal_shutdown("Address out of range")
 
+        self.roboclaw = Roboclaw(dev_name, baud_rate)
         # TODO need someway to check if address is correct
         try:
-            roboclaw.Open(dev_name, baud_rate)
+            self.roboclaw.Open()
         except Exception as e:
             rospy.logfatal("Could not connect to Roboclaw")
             rospy.logdebug(e)
@@ -163,9 +163,8 @@ class Node:
         self.updater.setHardwareID("Roboclaw")
         self.updater.add(diagnostic_updater.
                          FunctionDiagnosticTask("Vitals", self.check_vitals))
-
         try:
-            version = roboclaw.ReadVersion(self.address)
+            version = self.roboclaw.ReadVersion(self.address)
         except Exception as e:
             rospy.logwarn("Problem getting roboclaw version")
             rospy.logdebug(e)
@@ -176,8 +175,8 @@ class Node:
         else:
             rospy.logdebug(repr(version[1]))
 
-        roboclaw.SpeedM1M2(self.address, 0, 0)
-        roboclaw.ResetEncoders(self.address)
+        self.roboclaw.SpeedM1M2(self.address, 0, 0)
+        self.roboclaw.ResetEncoders(self.address)
 
         self.MAX_SPEED = float(rospy.get_param("~max_speed", "2.0"))
         self.TICKS_PER_METER = float(rospy.get_param("~ticks_per_meter", "4342.2"))
@@ -205,8 +204,8 @@ class Node:
             if (rospy.get_rostime() - self.last_set_speed_time).to_sec() > 0.3:
                 rospy.logdebug("Did not get comand for 1 second, stopping")
                 try:
-                    roboclaw.ForwardM1(self.address, 0)
-                    roboclaw.ForwardM2(self.address, 0)
+                    self.roboclaw.ForwardM1(self.address, 0)
+                    self.roboclaw.ForwardM2(self.address, 0)
                 except OSError as e:
                     rospy.logerr("Could not stop")
                     rospy.logdebug(e)
@@ -215,9 +214,8 @@ class Node:
             status1, enc1, crc1 = None, None, None
             status2, enc2, crc2 = None, None, None
 
-
             try:
-                status1, enc1, crc1 = roboclaw.ReadEncM1(self.address)
+                status1, enc1, crc1 = self.roboclaw.ReadEncM1(self.address)
             except ValueError:
                 pass
             except OSError as e:
@@ -225,33 +223,34 @@ class Node:
                 rospy.logdebug(e)
 
             try:
-                status2, enc2, crc2 = roboclaw.ReadEncM2(self.address)
+                status2, enc2, crc2 = self.roboclaw.ReadEncM2(self.address)
             except ValueError:
                 pass
             except OSError as e:
                 rospy.logwarn("ReadEncM2 OSError: %d", e.errno)
                 rospy.logdebug(e)
 
-            #if (enc1 in locals()) and (enc2 in locals()):
-	    try:
-		if (g_invert_motor_axes):
-			enc1 = -enc1;
-			enc2 = -enc2;
+            # if (enc1 in locals()) and (enc2 in locals()):
+            if g_invert_motor_axes:
+                enc1 = -enc1
+                enc2 = -enc2
 
-                if (g_flip_left_right_motors):
-			enc1_t = enc1;
-			enc2_t = enc2;
+            enc1_t = enc2
+            enc2_t = enc1
 
-			enc2 = enc1_t;
-			enc1 = enc2_t;
-			
+            if g_flip_left_right_motors:
+                enc1_t = enc1
+                enc2_t = enc2
 
+            enc1 = enc1_t
+            enc2 = enc2_t
+
+            try:
                 rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
-                self.encodm.update_publish(enc2, enc1) #update_publish expects enc_left enc_right
-
+                self.encodm.update_publish(enc2, enc1)  # update_publish expects enc_left enc_right
                 self.updater.update()
             except:
-		print("problems reading encoders")
+                print("problems reading encoders")
 
             r_time.sleep()
 
@@ -267,16 +266,15 @@ class Node:
         vr = linear_x + twist.angular.z * self.BASE_WIDTH / 2.0  # m/s
         vl = linear_x - twist.angular.z * self.BASE_WIDTH / 2.0
 
-	if (g_invert_motor_axes):
-		vr = -vr
-		vl = -vl
+        if g_invert_motor_axes:
+            vr = -vr
+            vl = -vl
 
-	if (g_flip_left_right_motors):
-		vr_t = vr
-		vl_t = vl
-		vr = vl_t
-		vl = vr_t
-
+        if g_flip_left_right_motors:
+            vr_t = vr
+            vl_t = vl
+            vr = vl_t
+            vl = vr_t
 
         vr_ticks = int(vr * self.TICKS_PER_METER)  # ticks/s
         vl_ticks = int(vl * self.TICKS_PER_METER)
@@ -286,10 +284,10 @@ class Node:
         try:
             # This is a hack way to keep a poorly tuned PID from making noise at speed 0
             if vr_ticks is 0 and vl_ticks is 0:
-                roboclaw.ForwardM1(self.address, 0)
-                roboclaw.ForwardM2(self.address, 0)
+                self.roboclaw.ForwardM1(self.address, 0)
+                self.roboclaw.ForwardM2(self.address, 0)
             else:
-                roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
+                self.roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
         except OSError as e:
             rospy.logwarn("SpeedM1M2 OSError: %d", e.errno)
             rospy.logdebug(e)
@@ -297,7 +295,7 @@ class Node:
     # TODO: Need to make this work when more than one error is raised
     def check_vitals(self, stat):
         try:
-            status = roboclaw.ReadError(self.address)[1]
+            status = self.roboclaw.ReadError(self.address)[1]
         except OSError as e:
             rospy.logwarn("Diagnostics OSError: %d", e.errno)
             rospy.logdebug(e)
@@ -305,10 +303,10 @@ class Node:
         state, message = self.ERRORS[status]
         stat.summary(state, message)
         try:
-            stat.add("Main Batt V:", float(roboclaw.ReadMainBatteryVoltage(self.address)[1] / 10))
-            stat.add("Logic Batt V:", float(roboclaw.ReadLogicBatteryVoltage(self.address)[1] / 10))
-            stat.add("Temp1 C:", float(roboclaw.ReadTemp(self.address)[1] / 10))
-            stat.add("Temp2 C:", float(roboclaw.ReadTemp2(self.address)[1] / 10))
+            stat.add("Main Batt V:", float(self.roboclaw.ReadMainBatteryVoltage(self.address)[1] / 10))
+            stat.add("Logic Batt V:", float(self.roboclaw.ReadLogicBatteryVoltage(self.address)[1] / 10))
+            stat.add("Temp1 C:", float(self.roboclaw.ReadTemp(self.address)[1] / 10))
+            stat.add("Temp2 C:", float(self.roboclaw.ReadTemp2(self.address)[1] / 10))
         except OSError as e:
             rospy.logwarn("Diagnostics OSError: %d", e.errno)
             rospy.logdebug(e)
@@ -318,13 +316,13 @@ class Node:
     def shutdown(self):
         rospy.loginfo("Shutting down")
         try:
-            roboclaw.ForwardM1(self.address, 0)
-            roboclaw.ForwardM2(self.address, 0)
+            self.roboclaw.ForwardM1(self.address, 0)
+            self.roboclaw.ForwardM2(self.address, 0)
         except OSError:
             rospy.logerr("Shutdown did not work trying again")
             try:
-                roboclaw.ForwardM1(self.address, 0)
-                roboclaw.ForwardM2(self.address, 0)
+                self.roboclaw.ForwardM1(self.address, 0)
+                self.roboclaw.ForwardM2(self.address, 0)
             except OSError as e:
                 rospy.logerr("Could not shutdown motors!!!!")
                 rospy.logdebug(e)
