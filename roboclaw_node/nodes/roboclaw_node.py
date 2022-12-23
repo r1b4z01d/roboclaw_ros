@@ -11,9 +11,6 @@ from nav_msgs.msg import Odometry
 
 __author__ = "bwbazemore@uga.edu (Brad Bazemore)"
 
-g_invert_motor_axes = False
-g_flip_left_right_motors = True  # By default M1=right motor M2=left motor
-
 # TODO need to find some better was of handling OSerror 11 or preventing it, any ideas?
 
 class EncoderOdom:
@@ -24,8 +21,8 @@ class EncoderOdom:
         self.cur_x = 0
         self.cur_y = 0
         self.cur_theta = 0.0
-        self.last_enc_left = 0
-        self.last_enc_right = 0
+        self.last_enc_left = 0           # M1=left
+        self.last_enc_right = 0          # M2=right
         self.last_enc_time = rospy.Time.now()
 
     @staticmethod
@@ -181,7 +178,9 @@ class Node:
         self.MAX_SPEED = float(rospy.get_param("~max_speed", "2.0"))
         self.TICKS_PER_METER = float(rospy.get_param("~ticks_per_meter", "4342.2"))
         self.BASE_WIDTH = float(rospy.get_param("~base_width", "0.315"))
-
+        self.INVERT_MOTOR_DIRECTION = rospy.get_param("~invert_motor_direction", False)
+        self.FLIP_LEFT_AND_RIGHT_MOTORS = rospy.get_param("~flip_left_and_right_motors", False)
+        
         self.encodm = EncoderOdom(self.TICKS_PER_METER, self.BASE_WIDTH)
         self.last_set_speed_time = rospy.get_rostime()
 
@@ -195,6 +194,8 @@ class Node:
         rospy.logdebug("max_speed %f", self.MAX_SPEED)
         rospy.logdebug("ticks_per_meter %f", self.TICKS_PER_METER)
         rospy.logdebug("base_width %f", self.BASE_WIDTH)
+        rospy.logdebug("invert_motor_direction %f", self.INVERT_MOTOR_DIRECTION)
+        rospy.logdebug("flip_left_and_right_motors %f", self.FLIP_LEFT_AND_RIGHT_MOTORS)
 
     def run(self):
         rospy.loginfo("Starting motor drive")
@@ -211,11 +212,11 @@ class Node:
                     rospy.logdebug(e)
 
             # TODO need find solution to the OSError11 looks like sync problem with serial
-            status1, enc1, crc1 = None, None, None
-            status2, enc2, crc2 = None, None, None
+            status_left, enc_left, crc_left = None, None, None
+            status_right, enc_right, crc_right = None, None, None
 
             try:
-                status1, enc1, crc1 = self.roboclaw.ReadEncM1(self.address)
+                status_left, enc_left, crc_left = self.roboclaw.ReadEncM1(self.address)
             except ValueError:
                 pass
             except OSError as e:
@@ -223,7 +224,7 @@ class Node:
                 rospy.logdebug(e)
 
             try:
-                status2, enc2, crc2 = self.roboclaw.ReadEncM2(self.address)
+                status_right, enc_right, crc_right = self.roboclaw.ReadEncM2(self.address)
             except ValueError:
                 pass
             except OSError as e:
@@ -231,23 +232,16 @@ class Node:
                 rospy.logdebug(e)
 
             # if (enc1 in locals()) and (enc2 in locals()):
-            if g_invert_motor_axes:
-                enc1 = -enc1
-                enc2 = -enc2
+            if self.INVERT_MOTOR_DIRECTION:
+                enc_left = -enc_left
+                enc_right = -enc_right
 
-            enc1_t = enc2
-            enc2_t = enc1
-
-            if g_flip_left_right_motors:
-                enc1_t = enc1
-                enc2_t = enc2
-
-            enc1 = enc1_t
-            enc2 = enc2_t
+            if self.FLIP_LEFT_AND_RIGHT_MOTORS:
+                enc_left, enc_right = enc_right, enc_left
 
             try:
-                rospy.logdebug(" Encoders %d %d" % (enc1, enc2))
-                self.encodm.update_publish(enc2, enc1)  # update_publish expects enc_left enc_right
+                rospy.logdebug(" Encoders %d %d" % (enc_left, enc_right))
+                self.encodm.update_publish(enc_left, enc_right)  # update_publish expects enc_left enc_right
                 self.updater.update()
             except:
                 print("problems reading encoders")
@@ -263,31 +257,28 @@ class Node:
         if linear_x < -self.MAX_SPEED:
             linear_x = -self.MAX_SPEED
 
-        vr = linear_x + twist.angular.z * self.BASE_WIDTH / 2.0  # m/s
-        vl = linear_x - twist.angular.z * self.BASE_WIDTH / 2.0
+        vel_right = linear_x + twist.angular.z * self.BASE_WIDTH / 2.0  # m/s
+        vel_left = linear_x - twist.angular.z * self.BASE_WIDTH / 2.0
 
-        if g_invert_motor_axes:
-            vr = -vr
-            vl = -vl
+        if self.INVERT_MOTOR_DIRECTION:
+            vel_right = -vel_right
+            vel_left = -vel_left
 
-        if g_flip_left_right_motors:
-            vr_t = vr
-            vl_t = vl
-            vr = vl_t
-            vl = vr_t
+        if self.FLIP_LEFT_AND_RIGHT_MOTORS:
+            vel_left, vel_right = vel_right, vel_left
 
-        vr_ticks = int(vr * self.TICKS_PER_METER)  # ticks/s
-        vl_ticks = int(vl * self.TICKS_PER_METER)
+        left_ticks = int(vel_left * self.TICKS_PER_METER)
+        right_ticks = int(vel_right * self.TICKS_PER_METER)  # ticks/s
 
-        rospy.logdebug("vr_ticks:%d vl_ticks: %d", vr_ticks, vl_ticks)
+        rospy.logdebug("left_ticks:%d right_ticks: %d", left_ticks, right_ticks)
 
         try:
             # This is a hack way to keep a poorly tuned PID from making noise at speed 0
-            if vr_ticks is 0 and vl_ticks is 0:
+            if left_ticks is 0 and right_ticks is 0:
                 self.roboclaw.ForwardM1(self.address, 0)
                 self.roboclaw.ForwardM2(self.address, 0)
             else:
-                self.roboclaw.SpeedM1M2(self.address, vr_ticks, vl_ticks)
+                self.roboclaw.SpeedM1M2(self.address, left_ticks, right_ticks)
         except OSError as e:
             rospy.logwarn("SpeedM1M2 OSError: %d", e.errno)
             rospy.logdebug(e)
