@@ -1,5 +1,3 @@
-<!-- Conversion of joy_teleop.launch to xml format for ROS 2 -->
-
 <!-- Driver for the standard joystick (/dev/input/js0). -->
 <launch>
   <node pkg="joy" exec="joy_node" name="joystick_driver" output="screen">
@@ -20,41 +18,8 @@
     <param name="axis_linear.x" value="1"/>
     <param name="axis_angular.yaw" value="3"/>
     <param name="scale_linear.x" value="0.4"/>
-    <param name="scale_angular.yaw" value="1.2"/>
-
-    <!-- to add turbo stuff -->
-    <!-- adding turbo stuff complicates things for some reason. Maybe gonna do it later  -->
-
-<!--<param name="enable_turbo_button" value="6" />
-    <param name="scale_linear_turbo.x" value="0.8"/>
-    <param name="scale_angular_turbo.yaw " value="1.6"/> -->
-   
+    <param name="scale_angular.yaw" value="1.2"/>   
     <remap from="/cmd_vel" to="/base/cmd_vel"/>
 
   </node>
 </launch>
-<!-- replaced turtlebot_teleop package with teleop_twist_joy, which is the ROS2 package-->
-<!-- changed exec="turtlebot_teleop_joy" to exec="teleop_node"  according to launch file of teleop_twist_joy-->
-
-<!-- the parameters are changed slightly to match joy-params.yaml -->
-<!--   
- <node pkg="joy" exec="joy_node" name="joystrick_driver" output="screen">
-    <param name="dev" value="/dev/input/js0" />
-    <param name="deadzone" value="0.05" />
-    <param name="autorepeat_rate" value="20" />
-    <param name="coalesce_interval" value="0.05" />
-  </node>
-
-<node pkg="teleop_twist_joy" exec="teleop_node" name="turtlebot_teleop_joystick" respawn="true">
-    <param name="scale_angular" value="1.2"/>
-    <param name="scale_linear" value="0.4"/>
-    <param name="axis_deadman" value="4"/>
-    <param name="axis_headctrl" value="8"/>
-    <param name="axis_linear_x" value="4"/>
-    <param name="axis_linear_y" value="3"/>
-    <param name="axis_angular" value="0"/>
-    <param name="axis_head_pan" value="1"/>
-    <param name="axis_head_tilt" value="2"/>
-    <remap from="/cmd_vel" to="/base/cmd_vel"/>
-  </node> -->
-<!-- needed to change the intgers to doubles -->
