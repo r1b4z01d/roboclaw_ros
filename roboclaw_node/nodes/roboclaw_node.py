@@ -356,16 +356,12 @@ def main(args=None):
         executor = MultiThreadedExecutor()
         executor.add_node(roboclaw_node)
 
-        _thread = threading.Thread(target=rate.sleep, daemon=True)
-        _thread.start()
-
         executor.create_task(roboclaw_node.run)
         try:
             executor.spin()
         finally:
             executor.shutdown()
             roboclaw_node.destroy_node()
-            _thread.join()
 
     except KeyboardInterrupt:
         sys.exit(1)
