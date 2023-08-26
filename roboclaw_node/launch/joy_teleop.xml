@@ -1,0 +1,25 @@
+<!-- Driver for the standard joystick (/dev/input/js0). -->
+<launch>
+  <node pkg="joy" exec="joy_node" name="joystick_driver" output="screen">
+    <param name="device_id" value="0" />
+    <param name="dev" value="/dev/input/js0" />
+    <param name="deadzone" value="0.5" />
+    <param name="autorepeat_rate" value="20.0" />
+    <param name="sticky_buttons" value="false" />
+    <param name="coalesce_interval" value="1" />
+  </node>
+
+  <!--  smooths inputs from cmd_vel_mux/input/teleop_raw to cmd_vel_mux/input/teleop -->
+  <!--include file="$(find turtlebot_teleop)/launch/includes/velocity_smoother.launch.xml"/-->
+
+  <!--- Teleop Joystick, taken from iai_boxy node -->
+  <node pkg="teleop_twist_joy" exec="teleop_node" name="turtlebot_teleop_joystick" respawn="true">
+    <param name="enable_button" value="4" />
+    <param name="axis_linear.x" value="1"/>
+    <param name="axis_angular.yaw" value="3"/>
+    <param name="scale_linear.x" value="0.4"/>
+    <param name="scale_angular.yaw" value="1.2"/>   
+    <remap from="/cmd_vel" to="/base/cmd_vel"/>
+
+  </node>
+</launch>
